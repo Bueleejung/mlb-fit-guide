@@ -1,0 +1,9 @@
+{
+  "name": "Fit Guide",
+  "short_name": "Fit Guide",
+  "display": "standalone",
+  "start_url": "/index-1440x2560.html",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "orientation": "portrait"
+}

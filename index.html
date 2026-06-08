@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#ffffff" />
+<link rel="manifest" href="/manifest.json" />
+<title>Fit Guide (1440x2560)</title>
+<style>
+  @font-face {
+    font-family: 'Busan';
+    src: url('https://cdn.jsdelivr.net/korean-webfonts/1/orgs/govs/busan/Busan/Busan.woff2') format('woff2'),
+         url('https://cdn.jsdelivr.net/korean-webfonts/1/orgs/govs/busan/Busan/Busan.woff') format('woff');
+    font-weight: 400;
+    font-display: swap;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0; padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #ffffff;
+    font-family: 'Busan', sans-serif;
+    touch-action: none;
+  }
+
+  #loading-screen {
+    position: fixed; inset: 0;
+    background: #f8f7f5;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.6s ease;
+  }
+  #loading-screen.hidden { opacity: 0; pointer-events: none; }
+  #loading-title {
+    font-size: 19px; letter-spacing: 0.2em;
+    color: #1a1a1a; text-transform: uppercase; margin-bottom: 40px;
+  }
+  #loading-bar-wrap {
+    width: 267px; height: 3px;
+    background: rgba(0,0,0,0.08); border-radius: 3px;
+    overflow: hidden; margin-bottom: 16px;
+  }
+  #loading-bar {
+    height: 100%; width: 0%;
+    background: #1a1a1a; border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  #loading-percent { font-size: 13px; letter-spacing: 0.15em; color: #999; }
+  #loading-status  { font-size: 12px; letter-spacing: 0.1em;  color: #bbb; margin-top: 11px; }
+  #loading-screen.ready { cursor: pointer; }
+  #loading-screen.ready #loading-status {
+    font-size: 16px; letter-spacing: 0.32em; color: #1a1a1a;
+    animation: pulse-start 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse-start {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+  }
+
+  #fs-reenter {
+    position: fixed; top: 0; left: 0;
+    width: 80px; height: 80px;
+    z-index: 50; background: transparent;
+  }
+
+  #app {
+    position: fixed; inset: 0;
+    background: #000;
+  }
+
+  #video-wrap {
+    position: fixed; inset: 0;
+    overflow: hidden;
+    background: #000;
+  }
+
+  video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; object-position: center center;
+    display: block; background: #000;
+  }
+
+  /* 예방 새로고침 때 현재 프레임을 덮어 검은 화면을 가리는 캔버스 */
+  #freeze-frame {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; object-position: center center;
+    z-index: 10; background: #000;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  #freeze-frame.visible { opacity: 1; transition: none; }
+
+  #autoplay-indicator {
+    position: absolute; top: 27px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 20; display: flex; align-items: center; gap: 7px;
+    opacity: 0; transition: opacity 0.4s ease; pointer-events: none;
+  }
+  #autoplay-indicator.visible { opacity: 1; }
+  #autoplay-dot {
+    width: 5px; height: 5px; border-radius: 50%; background: #1a1a1a;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.3; transform: scale(0.6); }
+  }
+  #autoplay-label { font-size: 11px; letter-spacing: 0.24em; color: #555; text-transform: uppercase; }
+
+  #sidebar {
+    position: absolute; top: 54%; right: 59px;
+    transform: translateY(-50%);
+    z-index: 20; display: flex; flex-direction: column;
+    align-items: stretch; gap: 10px; width: 248px;
+  }
+  .side-divider { height: 1px; background: rgba(0,0,0,0.12); margin: 8px 0; }
+  .fit-btn {
+    display: flex; flex-direction: column;
+    align-items: flex-start; justify-content: center;
+    gap: 3px; padding: 19px 20px;
+    background: rgba(255,255,255,0.88);
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 13px; cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+  }
+  .fit-btn.active       { background: rgba(255,255,255,0.97); border-color: #000; }
+  .fit-btn:not(.active) { background: rgba(255,255,255,0.75); border-color: rgba(0,0,0,0.2); }
+  .fit-btn:active       { transform: scale(0.96); }
+  .btn-group {
+    font-size: 13px; letter-spacing: 0.14em; color: #888;
+    text-transform: uppercase; line-height: 1; order: -1;
+  }
+  .fit-btn.active .btn-group { color: #555; }
+  .btn-label {
+    font-size: 21px; letter-spacing: 0.04em; color: #888;
+    text-transform: uppercase; white-space: nowrap;
+    font-weight: 600; line-height: 1.2;
+  }
+  .fit-btn.active .btn-label { color: #1a1a1a; }
+
+  #ai-label {
+    position: absolute; bottom: 24px; right: 37px;
+    z-index: 20; font-size: 12px; letter-spacing: 0.14em;
+    color: #aaa; text-transform: uppercase;
+    font-family: 'Busan', sans-serif;
+    pointer-events: none; width: 184px; text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<div id="fs-reenter"></div>
+
+<div id="loading-screen">
+  <div id="loading-title">Fit Guide</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+  <div id="loading-percent">0%</div>
+  <div id="loading-status">loading...</div>
+</div>
+
+<div id="app" style="display:none;">
+  <div id="video-wrap">
+    <video id="main-video" autoplay muted playsinline webkit-playsinline preload="auto"></video>
+    <canvas id="freeze-frame"></canvas>
+    <div id="autoplay-indicator">
+      <div id="autoplay-dot"></div>
+      <div id="autoplay-label">Auto</div>
+    </div>
+    <div id="sidebar"></div>
+    <div id="ai-label">AI Simulated Fit</div>
+  </div>
+</div>
+
+<script>
+/* 개별 영상 파일 — 길이(duration) 감지에만 사용.
+   실제 재생은 합친 파일(CONCAT_SRC)로만 함. */
+const FITS = [
+  { name: 'Straight',    path: './straight-uni.mp4'   , group: 'Uni'   },
+  { name: 'Comfortable', path: './comfortable-uni.mp4' , group: 'Uni'   },
+  { name: 'Wide',        path: './wide-uni.mp4'        , group: 'Uni'   },
+  { name: 'Curved Wide', path: './curved-wide-uni.mp4' , group: 'Uni'   },
+  { name: 'Flare',       path: './flare-women.mp4'     , group: 'Women' },
+  { name: 'Semi Wide',   path: './semi-wide-women.mp4' , group: 'Women' },
+  { name: 'Wide',        path: './wide-women.mp4'      , group: 'Women' },
+];
+
+/* 7개 영상을 ffmpeg로 합친 파일 */
+const CONCAT_SRC = './all-fits.mp4';
+
+const INACTIVITY_TIMEOUT_MS = 7000;
+
+let timecodes    = [];   /* [{ start, end }, ...] — 초 단위 */
+let currentIndex = 0;
+let isAutoplaying = true;
+let inactivityTimer = null;
+let uiBuilt = false;
+
+const video        = document.getElementById('main-video');
+const sidebar      = document.getElementById('sidebar');
+const autoInd      = document.getElementById('autoplay-indicator');
+const loadingScreen  = document.getElementById('loading-screen');
+const loadingBar     = document.getElementById('loading-bar');
+const loadingPercent = document.getElementById('loading-percent');
+const loadingStatus  = document.getElementById('loading-status');
+const appEl          = document.getElementById('app');
+
+/* ── 개별 영상 메타데이터에서 길이 읽기 (순차) ───────────────────
+ * LG StanbyME 는 복수 video 요소를 동시 처리 못함 → 1개씩 순차 로드.
+ * ?meta=1 쿼리로 SW 캐시 로직을 우회해 메타데이터만 빠르게 읽음. */
+function getVideoDuration(src) {
+  return new Promise(resolve => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    v.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(v);
+
+    const cleanup = dur => {
+      clearTimeout(timer);
+      v.onloadedmetadata = v.onerror = null;
+      document.body.removeChild(v);
+      v.removeAttribute('src');
+      v.load();
+      resolve(dur);
+    };
+
+    const timer = setTimeout(() => cleanup(0), 10000);
+    v.onloadedmetadata = () => cleanup(v.duration || 0);
+    v.onerror = () => cleanup(0);
+    v.src = src + '?meta=1'; /* SW 캐시 우회 */
+  });
+}
+
+async function buildTimecodes() {
+  const TOTAL_STEPS = FITS.length + 1; /* 개별 7개 + all-fits 1개 */
+  const durations = [];
+  timecodes = [];
+
+  /* 개별 파일 길이 순차 읽기 */
+  for (let i = 0; i < FITS.length; i++) {
+    const pct = Math.round(((i + 1) / TOTAL_STEPS) * 90);
+    loadingBar.style.width = pct + '%';
+    loadingPercent.textContent = pct + '%';
+    durations.push(await getVideoDuration(FITS[i].path));
+  }
+
+  /* all-fits.mp4 실제 길이로 타임코드 보정 (개별 duration 누적 오차 교정) */
+  loadingBar.style.width = '92%';
+  loadingPercent.textContent = '92%';
+  const totalActual   = await getVideoDuration(CONCAT_SRC);
+  const totalExpected = durations.reduce((a, b) => a + b, 0);
+  const scale = (totalActual > 0 && totalExpected > 0) ? totalActual / totalExpected : 1;
+
+  let elapsed = 0;
+  for (let i = 0; i < FITS.length; i++) {
+    const d = (durations[i] || 0) * scale;
+    timecodes.push({ start: elapsed, end: elapsed + d });
+    elapsed += d;
+  }
+}
+
+/* ── 전체화면 ────────────────────────────────────────────────── */
+function goFullscreen() {
+  const el = document.documentElement;
+  const fn = el.requestFullscreen || el.webkitRequestFullscreen
+          || el.mozRequestFullScreen || el.msRequestFullscreen;
+  if (!fn) return;
+  try { const r = fn.call(el); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+}
+
+/* ── 로딩 ────────────────────────────────────────────────────── */
+async function bootstrap() {
+  await buildTimecodes();
+
+  loadingBar.style.width = '100%';
+  loadingPercent.textContent = '100%';
+  loadingStatus.textContent = 'TAP TO START';
+  loadingScreen.classList.add('ready');
+  loadingScreen.addEventListener('pointerdown', startOnce, { once: true });
+}
+
+function startOnce() { goFullscreen(); showApp(); }
+
+document.getElementById('fs-reenter').addEventListener('pointerdown', e => {
+  e.stopPropagation(); goFullscreen();
+});
+
+function showApp() {
+  appEl.style.display = '';
+  loadingScreen.classList.add('hidden');
+  setTimeout(() => { loadingScreen.style.display = 'none'; }, 600);
+  init();
+}
+
+/* ── UI ──────────────────────────────────────────────────────── */
+function buildUI() {
+  if (uiBuilt) return;
+  uiBuilt = true;
+  FITS.forEach((fit, i) => {
+    if (i === 4) sidebar.appendChild(
+      Object.assign(document.createElement('div'), { className: 'side-divider' })
+    );
+    const btn = document.createElement('button');
+    btn.className = 'fit-btn' + (i === 0 ? ' active' : '');
+    btn.innerHTML = `<span class="btn-group">${fit.group}</span><span class="btn-label">${fit.name}</span>`;
+    btn.addEventListener('pointerdown', () => onFitTapped(i));
+    sidebar.appendChild(btn);
+  });
+}
+
+function updateUI() {
+  document.querySelectorAll('.fit-btn').forEach((b, i) => b.classList.toggle('active', i === currentIndex));
+  autoInd.classList.toggle('visible', isAutoplaying);
+}
+
+/* ── 현재 재생 위치로 활성 핏 감지 ─────────────────────────────
+ * ontimeupdate 에서 호출. video.currentTime 을 타임코드와 비교해
+ * 현재 어떤 핏 구간인지 파악하고 UI를 갱신함. */
+function detectCurrentFit() {
+  const t = video.currentTime;
+  for (let i = timecodes.length - 1; i >= 0; i--) {
+    if (t >= timecodes[i].start - 0.1) {
+      if (i !== currentIndex) {
+        currentIndex = i;
+        updateUI();
+      }
+      return;
+    }
+  }
+}
+
+/* ── 영상 전환 (seek) ────────────────────────────────────────── */
+/* SEEK_OFFSET: 세그먼트 경계 오차 + LG 키프레임 스냅 문제 해소.
+   충분히 깊이 들어가야 이전 핏 프레임이 안 보임. */
+const SEEK_OFFSET = 1.0;
+
+function seekTo(index) {
+  if (!timecodes[index]) return;
+  currentIndex = index;
+  updateUI();
+  const t = timecodes[index].start + SEEK_OFFSET;
+  if (video.fastSeek) video.fastSeek(t); else video.currentTime = t;
+  video.play().catch(() => {});
+}
+
+/* ── 자동재생 ────────────────────────────────────────────────── */
+function startAutoplay() {
+  isAutoplaying = true;
+  video.loop = true;          /* onended 대신 네이티브 루프 — 더 안정적 */
+  video.ontimeupdate = detectCurrentFit;
+  if (video.paused) video.play().catch(() => {});
+  updateUI();
+}
+
+function pauseAutoplay() {
+  video.loop         = false;
+  video.ontimeupdate = null;
+  isAutoplaying = false;
+  updateUI();
+}
+
+/* ── 비활성 타이머 ───────────────────────────────────────────── */
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(startAutoplay, INACTIVITY_TIMEOUT_MS);
+}
+
+/* ── 버튼 탭 ─────────────────────────────────────────────────── */
+function onFitTapped(index) {
+  pauseAutoplay();
+  resetInactivityTimer();
+  seekTo(index);
+}
+
+/* ── Wake Lock — 화면 절전/자동꺼짐 방지 ────────────────────── */
+async function keepAwake() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    await navigator.wakeLock.request('screen');
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') keepAwake();
+});
+
+/* ── 재생 감시 + 자동 복구 ──────────────────────────────────────
+ * 장시간(수 시간) 무한재생 시 LG 디코더가 뻗어 화면만 검게 남는 현상 대응.
+ * '일시정지'가 아니라 'currentTime 진행 여부'로 멈춤을 판단하고,
+ * 멈췄거나 디코더 에러가 나면 영상 소스를 다시 걸어 스스로 복구한다. */
+const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000; /* 3시간마다 예방 새로고침 */
+
+let lastTime      = 0;     /* 직전 점검 때의 재생 위치 */
+let stalledChecks = 0;     /* 진행이 멈춘 연속 횟수 */
+let recovering    = false; /* 복구 중 중복 실행 방지 */
+
+const freezeCanvas = document.getElementById('freeze-frame');
+
+/* 현재 영상 프레임을 캔버스에 사진처럼 찍어 위에 덮음 (검은 화면 가림) */
+function showFreezeFrame() {
+  try {
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) return false;
+    freezeCanvas.width  = w;
+    freezeCanvas.height = h;
+    freezeCanvas.getContext('2d').drawImage(video, 0, 0, w, h);
+    freezeCanvas.classList.add('visible');
+    return true;
+  } catch (e) { return false; }
+}
+function hideFreezeFrame() { freezeCanvas.classList.remove('visible'); }
+
+/* 영상 소스를 다시 걸어 디코더를 재시작.
+ * mask=true → 프리즈 프레임으로 가려 검은 화면 없이 갱신 (예방 새로고침). */
+function reloadVideo(mask) {
+  if (recovering) return;
+  recovering = true;
+
+  const masked = mask ? showFreezeFrame() : false;
+
+  /* 멈춘/현재 지점에서 이어 재생 (위치를 못 읽으면 현재 핏 시작점) */
+  const tc = timecodes[currentIndex];
+  const resumeAt = (video.currentTime && isFinite(video.currentTime))
+    ? video.currentTime
+    : ((tc ? tc.start : 0) + SEEK_OFFSET);
+  const wasAutoplaying = isAutoplaying;
+
+  const onReady = () => {
+    try {
+      if (video.fastSeek) video.fastSeek(resumeAt);
+      else video.currentTime = resumeAt;
+    } catch (e) {}
+    video.play().catch(() => {});
+    if (wasAutoplaying) startAutoplay();
+    lastTime      = video.currentTime;
+    stalledChecks = 0;
+    recovering    = false;
+
+    /* 실제로 재생이 시작된 뒤에 프리즈 프레임 제거 → 검은 화면 안 보임 */
+    if (masked) {
+      let tries = 0;
+      const wait = setInterval(() => {
+        if ((!video.paused && video.readyState >= 3) || ++tries > 30) {
+          clearInterval(wait);
+          hideFreezeFrame();
+        }
+      }, 100);
+    }
+  };
+
+  video.addEventListener('loadeddata', onReady, { once: true });
+  try {
+    video.src = CONCAT_SRC;   /* 소스 재할당 → 디코더 재시작 */
+    video.load();
+  } catch (e) {
+    recovering = false;
+    if (masked) hideFreezeFrame();
+  }
+}
+
+/* 멈춤/에러 시 즉시 복구 — 이미 검은 화면이라 마스킹은 의미 없음 */
+function hardRecover() { reloadVideo(false); }
+
+function startWatchdog() {
+  lastTime = video.currentTime || 0;
+
+  setInterval(() => {
+    if (recovering) return;
+
+    /* 1) 단순 일시정지 → 다시 재생 */
+    if (video.paused && !video.seeking) {
+      video.play().catch(() => {});
+      return;
+    }
+
+    /* 2) 재생 중인데 시간이 안 흐름 = 디코더 멈춤(검은 화면) 감지 */
+    if (!video.seeking) {
+      if (Math.abs(video.currentTime - lastTime) < 0.05) {
+        stalledChecks++;
+        if (stalledChecks >= 3) hardRecover();  /* 약 12초 멈추면 복구 */
+      } else {
+        stalledChecks = 0;
+      }
+    }
+    lastTime = video.currentTime;
+  }, 4000);
+
+  /* 디코더 에러 / 소스 소실 시 즉시 복구 */
+  ['error', 'emptied', 'abort'].forEach(ev =>
+    video.addEventListener(ev, () => hardRecover())
+  );
+
+  /* 3시간마다 예방 새로고침 — 디코더가 뻗기 전에 미리 갱신 (검은 화면 없이) */
+  setInterval(() => reloadVideo(true), REFRESH_INTERVAL_MS);
+}
+
+/* ── 초기화 ──────────────────────────────────────────────────── */
+function init() {
+  buildUI();
+  keepAwake();
+  video.src = CONCAT_SRC;
+  video.load();
+  video.play().catch(() => {});
+  startAutoplay();
+  startWatchdog();
+}
+
+bootstrap();
+</script>
+</body>
+</html>
